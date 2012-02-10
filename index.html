@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>ECG</title>
+		<style>
+			html, body {
+				margin: 0;
+				padding: 0;
+				width: 100%;
+				height: 100%;
+				background: #333;
+			}
+			#container {
+				width: 100%;
+				background: #000;
+				position: absolute;
+				top: 0;
+				left: 0;
+				bottom: 0;
+			}
+			#container canvas,
+			#container div {
+				position: absolute;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				background-position: 50% 50%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="container">
+			<canvas></canvas>
+			<canvas></canvas>
+			<div></div>
+		</div>
+		<script>
+			var c = document.getElementById("container"),
+			    bgc = c.getElementsByTagName("canvas")[0],
+			    bg = bgc.getContext("2d"),
+			    fgc = c.getElementsByTagName("canvas")[1],
+			    fg = fgc.getContext("2d"),
+			    o = c.getElementsByTagName("div")[0],
+			    w = c.offsetWidth,
+			    h = c.offsetHeight,
+			    hw = w/2,
+			    hh = h/2;
+
+			bgc.width = fgc.width = w;
+			bgc.height = fgc.height = h;
+			bg.translate(0,hh);
+			fg.translate(0,hh);
+
+			var box = Math.floor(w / 30)
+			    boxCanvas = document.createElement("canvas"),
+			    boxContext = boxCanvas.getContext("2d");
+
+			boxCanvas.width = box;
+			boxCanvas.height = box;
+			boxContext.strokeStyle = "hsla(150,100%,90%,0.1)";
+			boxContext.lineWidth = 3;
+			boxContext.beginPath();
+			boxContext.moveTo(0,box/2);
+			boxContext.lineTo(box,box/2);
+			boxContext.closePath();
+			boxContext.stroke();
+			boxContext.beginPath();
+			boxContext.moveTo(box/2,0);
+			boxContext.lineTo(box/2,box);
+			boxContext.closePath();
+			boxContext.stroke();
+
+			var boxImage = boxCanvas.toDataURL("image/png", "");
+			o.style.backgroundImage = "url("+boxImage+")";
+
+			var p = {
+				x:0,y:0,
+				lx:0,ly:0
+			};
+
+			bg.fillStyle = "rgba(0,0,0,0.005)"
+			bg.strokeStyle = "hsla(150,65%,50%,1)";
+			bg.lineWidth = 2;
+			fg.font = "14pt Verdana";
+			fg.fillStyle = "hsla(125,10%,95%,0.75)";
+			fg.strokeStyle = "hsla(150,65%,50%,0.5)";
+			fg.lineWidth = 1;
+
+			var data = [{
+				BPM: 48.5,
+				BS: 0.825
+			}, {
+				BPM: 37,
+				BS: 0.75,
+			}, {
+				BPM: 60,
+				BS: 0.9,
+			}];
+
+			var start = new Date();
+			var update = function() {
+				var t = (new Date()) - start;
+
+				for (var i = 0; i < data.length; i++) {
+					if (!data[i].p) data[i].p = {};
+					data[i].p.lx = data[i].p.x || 0;
+					data[i].p.ly = data[i].p.y || 0;
+
+					var bps = data[i].BPM / 60,
+					    u = 1 / bps,
+					    z = (t % (1000*u))/1000,
+					    f = data[i].BS * 3 * box,
+					    f = 0.95 * f + Math.random() * 0.1 * f,
+					    y = 0,
+					    // 5 'boxes' per second
+					    x = (5 * box) / 1000 * t;
+
+					switch (true) {
+						// P
+						case z < 0.10: y = Math.sin((Math.PI/0.10)*(z-0.00)) * (f/-15); break;
+						// Q
+						case z < 0.15: y = Math.sin((Math.PI/0.05)*(z-0.10)) * (f/20); break;
+						// R
+						case z < 0.25: y = Math.sin((Math.PI/0.10)*(z-0.15)) * (f/-1); break;
+						// S
+						case z < 0.30: y = Math.sin((Math.PI/0.05)*(z-0.25)) * (f/20); break;
+						// T
+						case z < 0.45: y = Math.sin((Math.PI/0.15)*(z-0.30)) * (f/-10); break;
+						// Everything else
+						default:       y = Math.cos(f*-z*0.25); break;
+					}
+
+					data[i].p.x = x % w;
+					data[i].p.y = y;
+				}
+			}
+
+			var render = function() {
+				bg.moveTo(0,0);
+				bg.fillRect(0,-hh,w,h);
+
+				fg.clearRect(0,-hh,w,h);
+
+				var sectionSize = (h/data.length),
+				    scale = 1;
+
+				if (sectionSize <= 4 * box) scale = 1 / (4.5 * box) * sectionSize;
+
+				for (var i = 0; i < data.length; i++) {
+					var oy = (Math.round(((sectionSize * (i+0.5)) - hh) / box)+1) * box;
+					var p = data[i].p;
+					if (p.lx <= p.x) {
+						bg.save();
+						bg.translate(0,oy);
+						if (scale != 1) bg.scale(1,scale);
+						bg.beginPath();
+						bg.moveTo(p.lx,p.ly);
+						bg.lineTo(p.x,p.y);
+						//bg.arc(p.x,p.y,1,0,Math.PI*2,false);
+						bg.closePath();
+						bg.stroke();
+						bg.restore();
+					}
+
+					fg.save();
+					fg.translate(0,oy);
+					if (data[i].title)
+						fg.strokeText(data[i].title,2*box,-box);
+					if (scale != 1) fg.scale(1,scale);
+					fg.beginPath();
+					fg.moveTo(p.x,p.y);
+					fg.arc(p.x,p.y,3,0,Math.PI*2,false);
+					fg.closePath();
+					//fg.stroke();
+					fg.fill();
+					fg.restore();
+				}
+			}
+
+			var step = window.requestAnimationFrame ||
+					window.webkitRequestAnimationFrame ||
+					window.mozRequestAnimationFrame ||
+					window.oRequestAnimationFrame ||
+					window.msRequestAnimationFrame ||
+					function (callback) {
+						window.setTimeout(callback, 1000 / 60);
+					};
+
+			(function () {
+				update();
+				render();
+				step(arguments.callee);
+			})();
+
+
+			var __update = function() {
+				var lData = [].slice.call(arguments);
+				for (var i = lData.length - 1; i >= 0; i--) {
+					var d = lData[i];
+					if (d === null) {
+						data.splice(i,1);
+					} else {
+						data[i] = data[i] || {BPM:0,BS:0,p:{x:0,y:0,lx:0,ly:0}};
+						for (e in d) {
+							if (d.hasOwnProperty(e))
+								data[i][e] = d[e];
+						}
+					}
+				}
+			}
+
+			/*
+			var refresh = function() {
+				var script = document.createElement("script");
+				script.onload = function() {
+					this.parentNode.removeChild(this);
+				}
+				script.src = "data.js?rnd="+(new Date())/1;
+				document.body.appendChild(script);
+			}
+			setInterval(refresh, 5 * 1000);
+			refresh();
+			*/
+		</script>
+	</body>
+</html>
